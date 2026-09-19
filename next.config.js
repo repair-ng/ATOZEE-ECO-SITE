@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: "standalone", // small runtime image for the Dokploy Docker build
+  optimizeFonts: false,
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "**" },
@@ -16,6 +17,7 @@ const nextConfig = {
       // allowing any http host here doesn't open this up to abuse the way
       // it would if visitors could submit their own image URLs.
       { protocol: "http", hostname: "**" },
+      
     ],
   },
 };
