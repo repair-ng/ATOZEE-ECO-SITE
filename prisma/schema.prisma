@@ -1,0 +1,159 @@
+// ATOZEE v2 — Prisma schema
+// Self-hosted Postgres (Dokploy-managed service), connected via DATABASE_URL.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Users & Auth
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  phone        String?
+  firstName    String   @map("first_name")
+  lastName     String   @map("last_name")
+  city         String?
+  state        String?
+  address      String?
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  passwordResetTokens PasswordResetToken[]
+  quoteRequests       QuoteRequest[]
+  orders              Order[]
+
+  @@map("users")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// Delivery
+// ---------------------------------------------------------------------------
+
+model DeliveryRate {
+  id        String   @id @default(uuid())
+  state     String   @unique
+  price     Decimal  @db.Decimal(12, 2)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("delivery_rates")
+}
+
+// ---------------------------------------------------------------------------
+// Catalog
+// ---------------------------------------------------------------------------
+
+model Product {
+  id            String   @id @default(uuid())
+  name          String
+  slug          String   @unique
+  partNumber    String   @map("part_number")
+  category      String
+  description   String?
+  price         Decimal  @db.Decimal(12, 2)
+  inStock       Boolean  @default(true) @map("in_stock")
+  images        String[]
+  isActive      Boolean  @default(true) @map("is_active")
+  engineNumbers String[] @map("engine_numbers") // renamed from engine_compatibility
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@index([engineNumbers])
+  @@map("products")
+}
+
+// ---------------------------------------------------------------------------
+// Quotes & Orders
+// ---------------------------------------------------------------------------
+
+enum DeliveryMethod {
+  delivery
+  pickup
+}
+
+enum QuoteStatus {
+  pending
+  quoted
+  accepted
+  declined
+  expired
+}
+
+model QuoteRequest {
+  id          String      @id @default(uuid())
+  userId      String      @map("user_id")
+  user        User        @relation(fields: [userId], references: [id])
+  items       Json
+  notes       String?
+  status      QuoteStatus @default(pending)
+
+  deliveryMethod  DeliveryMethod @map("delivery_method")
+  deliveryFee     Decimal?       @db.Decimal(12, 2) @map("delivery_fee")
+  deliveryAddress String?        @map("delivery_address")
+
+  fobPrice            Decimal? @db.Decimal(12, 2) @map("fob_price")
+  shippingCost        Decimal? @db.Decimal(12, 2) @map("shipping_cost")
+  shippingCbm         Decimal? @db.Decimal(12, 2) @map("shipping_cbm")
+  freightClearingCost Decimal? @db.Decimal(12, 2) @map("freight_clearing_cost")
+  localDeliveryCost   Decimal? @db.Decimal(12, 2) @map("local_delivery_cost")
+  quotedTotal         Decimal? @db.Decimal(12, 2) @map("quoted_total")
+  quoteSentAt         DateTime? @map("quote_sent_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@map("quote_requests")
+}
+
+enum OrderStatus {
+  pending
+  paid
+  failed
+  cancelled
+}
+
+model Order {
+  id                String      @id @default(uuid())
+  userId            String      @map("user_id")
+  user              User        @relation(fields: [userId], references: [id])
+  items             Json
+  customerName      String      @map("customer_name")
+  customerEmail     String      @map("customer_email")
+  customerPhone     String      @map("customer_phone")
+  amount            Decimal     @db.Decimal(12, 2)
+  status            OrderStatus @default(pending)
+  paystackReference String?     @unique @map("paystack_reference")
+
+  deliveryMethod  DeliveryMethod @map("delivery_method")
+  deliveryFee     Decimal        @default(0) @db.Decimal(12, 2) @map("delivery_fee")
+  deliveryAddress String?        @map("delivery_address")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  paidAt    DateTime? @map("paid_at")
+
+  @@index([userId])
+  @@map("orders")
+}
