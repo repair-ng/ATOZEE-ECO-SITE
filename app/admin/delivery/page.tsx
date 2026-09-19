@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import AdminNav from "@/components/AdminNav";
 import { formatNaira } from "@/lib/site-config";
 
 interface Rate {
@@ -75,13 +74,7 @@ export default function AdminDeliveryPage() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-12">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Delivery rates</h1>
-        <div className="flex gap-2">
-          
-          <AdminNav active="delivery" />
-        </div>
-      </div>
+      <h1 className="mb-6 text-2xl font-bold">Delivery rates</h1>
 
       <form onSubmit={handleAdd} className="mb-8 flex items-end gap-3">
         <div className="flex-1">
