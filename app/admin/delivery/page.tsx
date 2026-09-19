@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import AdminNav from "@/components/AdminNav";
 import { formatNaira } from "@/lib/site-config";
 
 interface Rate {
@@ -78,8 +78,8 @@ export default function AdminDeliveryPage() {
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold">Delivery rates</h1>
         <div className="flex gap-2">
-          <Link href="/admin/products" className="btn-secondary">Products</Link>
-          <Link href="/admin/quotes" className="btn-secondary">Quotes</Link>
+          
+          <AdminNav active="delivery" />
         </div>
       </div>
 

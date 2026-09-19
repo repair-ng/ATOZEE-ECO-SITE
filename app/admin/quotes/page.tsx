@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import AdminNav from "@/components/AdminNav";
 
 interface QuoteVM {
   id: string;
@@ -38,8 +39,8 @@ export default function AdminQuotesPage() {
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold">Quote requests</h1>
         <div className="flex gap-2">
-          <Link href="/admin/products" className="btn-secondary">Products</Link>
-          <Link href="/admin/delivery" className="btn-secondary">Delivery rates</Link>
+          
+          <AdminNav active="quotes" />
         </div>
       </div>
 

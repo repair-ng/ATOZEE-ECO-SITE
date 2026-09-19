@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { formatNaira } from "@/lib/site-config";
+import AdminNav from "@/components/AdminNav";
 
 interface ProductVM {
   id: string;
@@ -60,8 +61,8 @@ export default function AdminProductsPage() {
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold">Products</h1>
         <div className="flex gap-2">
-          <Link href="/admin/quotes" className="btn-secondary">Quotes</Link>
-          <Link href="/admin/delivery" className="btn-secondary">Delivery rates</Link>
+          
+          <AdminNav active="products" />
           <Link href="/admin/products/new" className="btn-primary">Add product</Link>
         </div>
       </div>

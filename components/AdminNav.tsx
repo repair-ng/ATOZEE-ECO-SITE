@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-export function AdminNav() {
+export default function AdminNav({ active }: { active: "products" | "quotes" | "delivery" }) {
   const router = useRouter();
 
   async function handleLogout() {
@@ -12,29 +12,17 @@ export function AdminNav() {
     router.refresh();
   }
 
+  const linkClass = (key: string) =>
+    key === active ? "btn-primary !px-3 !py-1.5 text-xs" : "btn-secondary !px-3 !py-1.5 text-xs";
+
   return (
-    <div style={{ background: "var(--color-blue-dark)", color: "white" }}>
-      <div
-        className="container"
-        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", height: 52, fontSize: 14 }}
-      >
-        <div style={{ display: "flex", gap: 20 }}>
-          <strong>AToZEE Staff</strong>
-          <Link href="/admin/quotes" style={{ color: "white" }}>
-            Quotes
-          </Link>
-          <Link href="/admin/delivery" style={{ color: "white" }}>
-            Delivery rates
-          </Link>
-        </div>
-        <button
-          type="button"
-          onClick={handleLogout}
-          style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.4)", color: "white", borderRadius: 6, padding: "4px 10px" }}
-        >
-          Log out
-        </button>
-      </div>
+    <div className="flex gap-2">
+      <Link href="/admin/products" className={linkClass("products")}>Products</Link>
+      <Link href="/admin/quotes" className={linkClass("quotes")}>Quotes</Link>
+      <Link href="/admin/delivery" className={linkClass("delivery")}>Delivery rates</Link>
+      <button onClick={handleLogout} className="btn-secondary !px-3 !py-1.5 text-xs">
+        Log out
+      </button>
     </div>
   );
 }
