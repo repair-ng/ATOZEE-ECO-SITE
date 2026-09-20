@@ -1,3 +1,5 @@
+// app/page.tsx (or wherever page.js queries Prisma)
+export const dynamic = "force-dynamic";
 import Link from "next/link";
 import Image from "next/image";
 import { prisma } from "@/lib/db";

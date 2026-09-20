@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { ProductCard, ProductSummary } from "./ProductCard";
-import { EngineNumberFilter } from "./EngineNumberFilter";
+import EngineNumberFilter from "./EngineNumberFilter";
 
 export function CatalogBrowser({
   products,
