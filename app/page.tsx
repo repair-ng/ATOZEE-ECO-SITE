@@ -39,20 +39,26 @@ export default async function HomePage() {
       {featured.length > 0 && (
         <section className="mx-auto max-w-6xl px-4 pb-16">
           <h2 className="mb-6 text-xl font-bold">Recently added</h2>
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
+          <div className="grid grid-cols-3 gap-2 sm:gap-6">
             {featured.map((p) => (
               <Link
                 key={p.id}
                 href={`/products/${p.slug}`}
-                className="rounded-lg border border-slate-200 p-4 transition hover:border-brand-blue"
+                className="rounded-lg border border-slate-200 p-1.5 transition hover:border-brand-blue sm:p-4"
               >
-                <div className="relative mb-3 h-32 w-full overflow-hidden rounded-md bg-slate-100">
+                <div className="relative mb-1.5 h-20 w-full overflow-hidden rounded-md bg-slate-100 sm:mb-3 sm:h-32">
                   {p.images[0] && (
-                    <Image src={p.images[0]} alt={p.name} fill className="object-contain" />
+                    <Image
+                      src={p.images[0]}
+                      alt={p.name}
+                      fill
+                      sizes="(max-width: 639px) 33vw, 25vw"
+                      className="object-contain"
+                    />
                   )}
                 </div>
-                <p className="font-semibold">{p.name}</p>
-                <p className="text-sm text-brand-blue">{formatNaira(Number(p.price))}</p>
+                <p className="line-clamp-2 text-xs font-semibold leading-snug sm:text-base">{p.name}</p>
+                <p className="text-xs text-brand-blue sm:text-sm">{formatNaira(Number(p.price))}</p>
               </Link>
             ))}
           </div>
