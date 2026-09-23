@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { formatNaira } from "@/lib/site-config";
@@ -14,6 +14,7 @@ interface ProductVM {
   price: string;
   inStock: boolean;
   isActive: boolean;
+  engineNumbers?: string[];
 }
 
 export default function AdminProductsPage() {
@@ -21,6 +22,8 @@ export default function AdminProductsPage() {
   const [products, setProducts] = useState<ProductVM[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
 
   function load() {
     setLoading(true);
@@ -53,6 +56,25 @@ export default function AdminProductsPage() {
     load();
   }
 
+  const categories = useMemo(() => {
+    return Array.from(new Set(products.map((p) => p.category).filter(Boolean))).sort();
+  }, [products]);
+
+  const filteredProducts = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return products.filter((p) => {
+      if (categoryFilter !== "all" && p.category !== categoryFilter) return false;
+      if (!query) return true;
+      return (
+        p.name.toLowerCase().includes(query) ||
+        p.partNumber.toLowerCase().includes(query) ||
+        p.slug.toLowerCase().includes(query) ||
+        p.category.toLowerCase().includes(query) ||
+        (p.engineNumbers ?? []).some((e) => e.toLowerCase().includes(query))
+      );
+    });
+  }, [products, search, categoryFilter]);
+
   if (loading) return <div className="px-4 py-12 text-center">Loading…</div>;
 
   return (
@@ -64,10 +86,35 @@ export default function AdminProductsPage() {
         </div>
       </div>
 
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <input
+          type="search"
+          className="input-field max-w-xs"
+          placeholder="Search by name, part number, slug, or engine number…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <select
+          className="input-field w-auto"
+          value={categoryFilter}
+          onChange={(e) => setCategoryFilter(e.target.value)}
+        >
+          <option value="all">All categories</option>
+          {categories.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+        <span className="text-sm text-slate-500">
+          {filteredProducts.length} of {products.length} product{products.length === 1 ? "" : "s"}
+        </span>
+      </div>
+
       {deleteError && <p className="mb-4 text-sm text-red-600">{deleteError}</p>}
 
       <ul className="divide-y divide-slate-200 rounded-md border border-slate-200">
-        {products.map((p) => (
+        {filteredProducts.map((p) => (
           <li key={p.id} className="flex items-center justify-between gap-4 px-4 py-3 text-sm">
             <div className="min-w-0 flex-1">
               <p className="truncate font-medium">{p.name}</p>
@@ -94,6 +141,11 @@ export default function AdminProductsPage() {
         {products.length === 0 && (
           <li className="px-4 py-6 text-center text-sm text-slate-500">
             No products yet — click &quot;Add product&quot; to create one.
+          </li>
+        )}
+        {products.length > 0 && filteredProducts.length === 0 && (
+          <li className="px-4 py-6 text-center text-sm text-slate-500">
+            No products match your search or filter.
           </li>
         )}
       </ul>
