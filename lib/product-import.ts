@@ -34,6 +34,27 @@ export interface ImportRowSkipped {
   reason: string;
 }
 
+export interface ImportRowUpdate {
+  row: number;
+  name: string;
+  existingId: string;
+  matchedOn: "slug" | "partNumber";
+  data: ProductImportRow;
+}
+
+/**
+ * "safe" (default): existing products are never modified. An exact-match
+ * duplicate is skipped; anything with the same slug/part number but
+ * different details is flagged as a conflict and left untouched.
+ *
+ * "overwrite": for rows that match an existing product (by slug or part
+ * number), every field EXCEPT images (and the existing slug, to keep URLs
+ * stable) is updated to the incoming values — this is the sync-from-
+ * inventory-system flow. Rows with no match are still created as new
+ * products, same as "safe" mode.
+ */
+export type ImportMode = "safe" | "overwrite";
+
 export interface ExistingProductLike {
   id: string;
   name: string;
@@ -251,25 +272,36 @@ function isExactDuplicate(incoming: ProductImportRow, existing: ExistingProductL
 
 export interface ClassifiedImport {
   toCreate: ProductImportRow[];
+  toUpdate: ImportRowUpdate[];
   skipped: ImportRowSkipped[];
   conflicts: ImportRowIssue[];
 }
 
 /**
- * Splits validated rows into: new products to create, exact duplicates of
- * existing products to skip, and conflicts (same slug/part number as an
- * existing product, but other details differ) which are left untouched so
- * nothing gets silently overwritten. Also de-dupes rows against each other
- * within the same file.
+ * Splits validated rows into: new products to create, matches against
+ * existing products, exact duplicates to skip, and (in "safe" mode)
+ * conflicts left untouched. Also de-dupes rows against each other within
+ * the same file, keeping only the first occurrence of a given slug/part
+ * number.
+ *
+ * - "safe" mode: a match that's byte-for-byte identical is skipped; a
+ *   match with any differing field is reported as a conflict and left
+ *   alone — nothing existing is ever modified.
+ * - "overwrite" mode: a match with differing fields goes to toUpdate
+ *   instead of conflicts, carrying the existing product's id so the
+ *   caller can update it. An identical match is still just skipped, since
+ *   there's nothing to change.
  */
 export function classifyProductImportRows(
   rows: ProductImportRow[],
-  existingProducts: ExistingProductLike[]
+  existingProducts: ExistingProductLike[],
+  mode: ImportMode = "safe"
 ): ClassifiedImport {
   const bySlug = new Map(existingProducts.map((p) => [normalizeForCompare(p.slug), p]));
   const byPartNumber = new Map(existingProducts.map((p) => [normalizeForCompare(p.partNumber), p]));
 
   const toCreate: ProductImportRow[] = [];
+  const toUpdate: ImportRowUpdate[] = [];
   const skipped: ImportRowSkipped[] = [];
   const conflicts: ImportRowIssue[] = [];
 
@@ -295,11 +327,19 @@ export function classifyProductImportRows(
           name: row.name,
           reason: "Already exists in the catalog with identical details.",
         });
+      } else if (mode === "overwrite") {
+        toUpdate.push({
+          row: row.row,
+          name: row.name,
+          existingId: match.id,
+          matchedOn: matchBySlug ? "slug" : "partNumber",
+          data: row,
+        });
       } else {
         conflicts.push({
           row: row.row,
           name: row.name,
-          message: `A product with the same ${matchBySlug ? "slug" : "part number"} already exists ("${match.name}") but with different details. Edit it directly from the product list instead, or change the slug/part number here to create a new product.`,
+          message: `A product with the same ${matchBySlug ? "slug" : "part number"} already exists ("${match.name}") but with different details. Edit it directly from the product list instead, change the slug/part number here to create a new product, or re-upload with "overwrite matching products" turned on.`,
         });
       }
       seenSlugs.add(slugKey);
@@ -312,7 +352,7 @@ export function classifyProductImportRows(
     seenPartNumbers.add(partKey);
   }
 
-  return { toCreate, skipped, conflicts };
+  return { toCreate, toUpdate, skipped, conflicts };
 }
 
 /** Builds the downloadable .xlsx template admins fill in for bulk import. */
@@ -358,6 +398,7 @@ export function buildProductImportTemplate(): Buffer {
     ["7. Image URLs are optional — bulk import does not upload image files. Add images to each product afterwards from its Edit page, or paste already-hosted image URLs into this column."],
     ["8. Rows that exactly match a product already in the catalog (same name, category, price, stock status, visibility and engine numbers) are skipped automatically."],
     ["9. Rows whose Slug or Part Number matches an existing product but with different details are flagged as conflicts and left untouched — edit that product directly instead of importing over it."],
+    ["10. Turn on \"Overwrite matching products\" on the upload page to update those matches instead — every field is replaced with the value in this sheet except product images, which are never touched by this import."],
   ]);
   instructionsSheet["!cols"] = [{ wch: 110 }];
 
