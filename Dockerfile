@@ -44,7 +44,13 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 # connects with. This avoids needing a direct connection from outside
 # Dokploy's network (e.g. an SSH tunnel from a developer's machine) just to
 # apply migrations.
-RUN npm install --no-save prisma@5.22.0
+# sharp: Next's image optimizer (next/image) refuses to work in standalone
+# mode without it, so product photos 500. Installed in the SAME command as
+# prisma on purpose — a second `npm install --no-save` would prune the first.
+# (Not added to package.json because package-lock.json can't be regenerated
+# here; if you'd rather pin it properly, run `npm install sharp` locally,
+# commit the lockfile, and drop it from this line.)
+RUN npm install --no-save prisma@5.22.0 sharp@0.33.5
 
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 # Defends against Windows line endings sneaking in via git on commit —
