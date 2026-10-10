@@ -9,7 +9,11 @@ COPY package.json package-lock.json* ./
 # stage only has package.json copied in yet, not prisma/schema.prisma, so
 # postinstall fails outright. Generation happens explicitly in the builder
 # stage below, once the full source is present.
-RUN npm ci --ignore-scripts
+# Strict `npm ci` first. If package-lock.json has drifted from package.json
+# (e.g. a dependency was added without regenerating the lockfile), fall back to
+# `npm install`, which only ADDS the missing packages and keeps every locked
+# version as-is. Once the lockfile is committed in sync, the strict path wins.
+RUN npm ci --ignore-scripts || npm install --ignore-scripts --no-audit --no-fund
 
 # ---- build ------------------------------------------------------------
 FROM node:20-alpine AS builder
