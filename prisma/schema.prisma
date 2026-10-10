@@ -158,3 +158,100 @@ model Order {
   @@index([userId])
   @@map("orders")
 }
+
+// ---------------------------------------------------------------------------
+// Inventory management (staff-only, separate login from the store admin)
+// ---------------------------------------------------------------------------
+
+enum InvRole {
+  GLOBAL_ADMIN
+  YUCHAI_STAFF
+  ATOZEE_STAFF
+}
+
+enum InvMovementType {
+  ADDED
+  REMOVED
+}
+
+model InvUser {
+  id             String   @id @default(uuid())
+  username       String   @unique
+  displayName    String   @map("display_name")
+  passwordHash   String   @map("password_hash")
+  role           InvRole
+  language       String   @default("en")
+  isActive       Boolean  @default(true) @map("is_active")
+  // Bumped on password reset / role change so existing sessions stop working.
+  sessionVersion Int      @default(0) @map("session_version")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  movements InvMovement[]
+  invoices  InvInvoice[]
+
+  @@map("inv_users")
+}
+
+model InvItem {
+  id          String   @id @default(uuid())
+  partNumber  String   @unique @map("part_number")
+  nameEn      String   @map("name_en")
+  nameZh      String?  @map("name_zh")
+  category    String
+  description String?
+  unit        String   @default("pcs")
+  quantity    Int      @default(0)
+  lowStockAt  Int      @default(5) @map("low_stock_at")
+  priceNgn    Decimal  @default(0) @map("price_ngn") @db.Decimal(12, 2)
+  invoiceable Boolean  @default(true)
+  // Soft delete so the stock log keeps pointing at a real row.
+  isDeleted   Boolean  @default(false) @map("is_deleted")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  movements InvMovement[]
+
+  @@index([category])
+  @@index([isDeleted])
+  @@map("inv_items")
+}
+
+model InvMovement {
+  id           String          @id @default(uuid())
+  itemId       String          @map("item_id")
+  item         InvItem         @relation(fields: [itemId], references: [id])
+  // Snapshots, so the log stays readable even if the item is later renamed.
+  partNumber   String          @map("part_number")
+  itemName     String          @map("item_name")
+  type         InvMovementType
+  quantity     Int
+  balanceAfter Int             @map("balance_after")
+  reason       String
+  userId       String?         @map("user_id")
+  user         InvUser?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  username     String
+  createdAt    DateTime        @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([type])
+  @@index([itemId])
+  @@map("inv_movements")
+}
+
+model InvInvoice {
+  id              String   @id @default(uuid())
+  number          String   @unique
+  customerName    String   @map("customer_name")
+  customerContact String?  @map("customer_contact")
+  notes           String?
+  lines           Json
+  total           Decimal  @db.Decimal(14, 2)
+  createdById     String?  @map("created_by_id")
+  createdBy       InvUser? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdByName   String   @map("created_by_name")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("inv_invoices")
+}
