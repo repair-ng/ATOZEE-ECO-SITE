@@ -38,6 +38,8 @@ const en = {
   err_VALIDATION: "Please check the form and try again.", err_DUPLICATE_USER: "That username is already taken.",
   err_SELF_PROTECT: "You can't disable or demote your own account.", err_NOT_FOUND: "That record no longer exists.",
   err_NOT_INVOICEABLE: "That item can't be invoiced.", err_generic: "Something went wrong. Please try again.",
+  err_CONFIG: "Inventory login isn't set up on the server yet (missing INVENTORY_SESSION_SECRET). Ask your administrator.",
+  err_DB_SETUP: "Inventory database tables are missing. Ask your administrator to run the database migration.",
 };
 
 export type Key = keyof typeof en;
@@ -76,6 +78,8 @@ const zh: Record<Key, string> = {
   err_VALIDATION: "请检查填写内容后重试。", err_DUPLICATE_USER: "该用户名已被使用。",
   err_SELF_PROTECT: "不能停用或降级自己的账号。", err_NOT_FOUND: "该记录已不存在。",
   err_NOT_INVOICEABLE: "该物品不可开具发票。", err_generic: "出错了，请重试。",
+  err_CONFIG: "服务器尚未配置库存登录（缺少 INVENTORY_SESSION_SECRET），请联系管理员。",
+  err_DB_SETUP: "库存数据库表缺失，请联系管理员执行数据库迁移。",
 };
 
 const dict: Record<Lang, Record<Key, string>> = { en, zh };

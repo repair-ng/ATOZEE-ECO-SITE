@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import {
   INV_COOKIE, createSessionToken, getDummyHash, hashPassword,
@@ -28,6 +29,15 @@ export async function POST(req: NextRequest) {
   try {
     assertSameOrigin(req);
     assertSize(req, 10_000);
+
+    // Setup problems get a distinct code (no secret values are ever revealed)
+    // so a fresh deploy tells you what's missing instead of a blank "500".
+    const secret = process.env.INVENTORY_SESSION_SECRET;
+    if (!secret || secret.length < 32) {
+      console.error("[inventory] INVENTORY_SESSION_SECRET is missing or shorter than 32 characters — set it in the app's environment and redeploy.");
+      throw new HttpError(500, "Inventory login is not configured on the server", "CONFIG");
+    }
+
     const { username, password } = await readJson(req, loginSchema);
 
     const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || "unknown";
@@ -54,6 +64,10 @@ export async function POST(req: NextRequest) {
     res.cookies.set(INV_COOKIE, createSessionToken(user.id, user.sessionVersion), sessionCookieOptions);
     return res;
   } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && (e.code === "P2021" || e.code === "P2022")) {
+      console.error("[inventory] Inventory tables are missing — the database migration has not been applied.", e.message);
+      return handleError(new HttpError(500, "Inventory database tables are missing", "DB_SETUP"));
+    }
     return handleError(e);
   }
 }
