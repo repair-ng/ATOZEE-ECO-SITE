@@ -207,6 +207,8 @@ model InvItem {
   invoiceable Boolean  @default(true)
   // Soft delete so the stock log keeps pointing at a real row.
   isDeleted   Boolean  @default(false) @map("is_deleted")
+  // Last time this item was published to the store's products table.
+  publishedAt DateTime? @map("published_at")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
@@ -239,19 +241,41 @@ model InvMovement {
   @@map("inv_movements")
 }
 
+enum InvInvoiceVariant {
+  ATOZEE
+  ATOZEE_YUCHAI
+}
+
 model InvInvoice {
-  id              String   @id @default(uuid())
-  number          String   @unique
-  customerName    String   @map("customer_name")
-  customerContact String?  @map("customer_contact")
+  id              String            @id @default(uuid())
+  number          String            @unique // yyyymmdd-NNN
+  variant         InvInvoiceVariant @default(ATOZEE)
+  customerName    String            @map("customer_name")
+  customerContact String?           @map("customer_contact")
+  customerAddress String?           @map("customer_address")
+  jobDescription  String?           @map("job_description")
+  tinNumber       String?           @map("tin_number")
+  refNo           String?           @map("ref_no")
   notes           String?
   lines           Json
-  total           Decimal  @db.Decimal(14, 2)
-  createdById     String?  @map("created_by_id")
-  createdBy       InvUser? @relation(fields: [createdById], references: [id], onDelete: SetNull)
-  createdByName   String   @map("created_by_name")
-  createdAt       DateTime @default(now()) @map("created_at")
+  subtotal        Decimal           @default(0) @db.Decimal(14, 2)
+  vatRate         Decimal           @default(7.5) @map("vat_rate") @db.Decimal(5, 2)
+  vatAmount       Decimal           @default(0) @map("vat_amount") @db.Decimal(14, 2)
+  total           Decimal           @db.Decimal(14, 2)
+  createdById     String?           @map("created_by_id")
+  createdBy       InvUser?          @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdByName   String            @map("created_by_name")
+  createdAt       DateTime          @default(now()) @map("created_at")
 
   @@index([createdAt])
   @@map("inv_invoices")
+}
+
+// One row per day; incremented atomically inside the invoice transaction so
+// serial numbers (yyyymmdd-001, -002 ...) never collide or skip.
+model InvInvoiceCounter {
+  day  String @id
+  last Int
+
+  @@map("inv_invoice_counters")
 }

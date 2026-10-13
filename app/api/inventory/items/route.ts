@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { HttpError, inv, pageParams, readJson } from "@/lib/inv-guard";
 import { createItemSchema } from "@/lib/inv-schemas";
 import { blankToNull, round2, serializeItem } from "@/lib/inv-serialize";
+import { itemWhere } from "@/lib/inv-where";
 
 export const GET = inv({}, async ({ req }) => {
   const sp = req.nextUrl.searchParams;
@@ -15,22 +16,7 @@ export const GET = inv({}, async ({ req }) => {
   const invoiceableOnly = sp.get("invoiceable") === "1";
   const { page, pageSize, skip } = pageParams(sp);
 
-  const where: Prisma.InvItemWhereInput = {
-    isDeleted: false,
-    ...(category ? { category } : {}),
-    ...(invoiceableOnly ? { invoiceable: true } : {}),
-    ...(low ? { quantity: { lte: prisma.invItem.fields.lowStockAt } } : {}),
-    ...(q
-      ? {
-          OR: [
-            { partNumber: { contains: q, mode: "insensitive" } },
-            { nameEn: { contains: q, mode: "insensitive" } },
-            { nameZh: { contains: q } },
-            { description: { contains: q, mode: "insensitive" } },
-          ],
-        }
-      : {}),
-  };
+  const where = itemWhere({ q, category, low, invoiceableOnly });
 
   const [items, total, cats] = await Promise.all([
     prisma.invItem.findMany({ where, orderBy: [{ category: "asc" }, { nameEn: "asc" }], skip, take: pageSize }),

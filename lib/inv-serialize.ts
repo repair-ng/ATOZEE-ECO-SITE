@@ -16,6 +16,8 @@ export function serializeItem(i: InvItem): ItemVM {
     lowStockAt: i.lowStockAt,
     priceNgn: Number(i.priceNgn),
     invoiceable: i.invoiceable,
+    updatedAt: i.updatedAt.toISOString(),
+    publishedAt: i.publishedAt ? i.publishedAt.toISOString() : null,
   };
 }
 

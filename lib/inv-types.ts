@@ -4,7 +4,11 @@ export type Role = "GLOBAL_ADMIN" | "YUCHAI_STAFF" | "ATOZEE_STAFF";
 export type Lang = "en" | "zh";
 
 export const ROLES: Role[] = ["GLOBAL_ADMIN", "YUCHAI_STAFF", "ATOZEE_STAFF"];
-export const canInvoice = (r: Role) => r === "ATOZEE_STAFF" || r === "GLOBAL_ADMIN";
+// Only Atozee staff may CREATE invoices; the global admin can view them for oversight.
+export const canCreateInvoices = (r: Role) => r === "ATOZEE_STAFF";
+export const canViewInvoices = (r: Role) => r === "ATOZEE_STAFF" || r === "GLOBAL_ADMIN";
+// Publishing pushes data into the Atozee store, so it's an Atozee-side action.
+export const canPublish = (r: Role) => r === "ATOZEE_STAFF" || r === "GLOBAL_ADMIN";
 export const isAdmin = (r: Role) => r === "GLOBAL_ADMIN";
 
 export interface SessionUserVM {
@@ -26,6 +30,8 @@ export interface ItemVM {
   lowStockAt: number;
   priceNgn: number;
   invoiceable: boolean;
+  updatedAt: string;
+  publishedAt: string | null;
 }
 export interface MovementVM {
   id: string;
@@ -38,21 +44,30 @@ export interface MovementVM {
   username: string;
   createdAt: string;
 }
+export type InvoiceVariant = "ATOZEE" | "ATOZEE_YUCHAI";
 export interface InvoiceLine {
-  itemId: string;
-  partNumber: string;
-  name: string;
+  itemId: string | null; // null = custom line (service, delivery, ...)
+  partNumber: string | null;
+  description: string;
   quantity: number;
+  unit: string;
   unitPrice: number;
   lineTotal: number;
+  lumpSum: boolean; // printed as "Lot" / "LS"
 }
 export interface InvoiceVM {
   id: string;
   number: string;
+  variant: InvoiceVariant;
   customerName: string;
-  customerContact: string | null;
-  notes: string | null;
+  customerAddress: string | null;
+  jobDescription: string | null;
+  tinNumber: string | null;
+  refNo: string | null;
   lines: InvoiceLine[];
+  subtotal: number;
+  vatRate: number;
+  vatAmount: number;
   total: number;
   createdByName: string;
   createdAt: string;

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/inv-client";
-import { useLang } from "@/lib/inv-i18n";
+import { useLang, type Key } from "@/lib/inv-i18n";
 import type { ItemVM } from "@/lib/inv-types";
 import { formatNaira } from "@/lib/site-config";
 import Modal, { Field } from "./Modal";
@@ -12,7 +12,8 @@ type ModalState =
   | { kind: "add" }
   | { kind: "edit"; item: ItemVM }
   | { kind: "stock"; item: ItemVM; type: "ADDED" | "REMOVED" }
-  | { kind: "delete"; item: ItemVM };
+  | { kind: "delete"; item: ItemVM }
+  | { kind: "publish"; ids?: string[]; filter?: { q?: string; category?: string; low?: boolean } };
 
 interface ListResp { items: ItemVM[]; total: number; page: number; pageSize: number; categories: string[] }
 
@@ -126,7 +127,103 @@ function ReasonForm({ item, type, remove, onDone, onClose }: {
   );
 }
 
-export default function ItemsClient() {
+interface PubResp {
+  dryRun: boolean;
+  truncated: boolean;
+  counts: { create: number; update: number; unchanged: number; skipped: number; failed: number };
+  rows: { partNumber: string; name: string; action: "create" | "update" | "unchanged" | "skipped" | "failed"; reason?: string }[];
+}
+
+// Preview first (nothing is written), then confirm. Same dialog for "selected" and "all matching".
+function PublishModal({ ids, filter, onDone, onClose }: {
+  ids?: string[]; filter?: { q?: string; category?: string; low?: boolean }; onDone: () => void; onClose: () => void;
+}) {
+  const { t, err } = useLang();
+  const [updateExisting, setUpdateExisting] = useState(true);
+  const [onlyChanged, setOnlyChanged] = useState(true);
+  const [res, setRes] = useState<PubResp | null>(null);
+  const [phase, setPhase] = useState<"loading" | "preview" | "publishing" | "done">("loading");
+  const [error, setError] = useState<string | null>(null);
+
+  const body = useCallback((dryRun: boolean) => ({
+    ...(ids ? { itemIds: ids } : { filter: { ...filter, unpublishedOnly: onlyChanged } }),
+    updateExisting, dryRun,
+  }), [ids, filter, onlyChanged, updateExisting]);
+
+  useEffect(() => {
+    let live = true;
+    setPhase("loading"); setError(null);
+    api<PubResp>("/api/inventory/publish", { method: "POST", body: body(true) })
+      .then((r) => { if (live) { setRes(r); setPhase("preview"); } })
+      .catch((e) => { if (live) { setError(err(e)); setPhase("preview"); } });
+    return () => { live = false; };
+  }, [body, err]);
+
+  async function publish() {
+    setPhase("publishing"); setError(null);
+    try {
+      setRes(await api<PubResp>("/api/inventory/publish", { method: "POST", body: body(false) }));
+      setPhase("done");
+    } catch (e) { setError(err(e)); setPhase("preview"); }
+  }
+
+  const c = res?.counts;
+  const todo = (c?.create ?? 0) + (c?.update ?? 0);
+  const badge: Record<string, string> = {
+    create: "bg-green-100 text-green-700", update: "bg-blue-100 text-blue-700", unchanged: "bg-slate-100 text-slate-600",
+    skipped: "bg-amber-100 text-amber-700", failed: "bg-red-100 text-red-700",
+  };
+  const label: Record<string, string> = {
+    create: t("willCreate"), update: t("willUpdate"), unchanged: t("unchangedLbl"), skipped: t("skippedLbl"), failed: t("failedLbl"),
+  };
+
+  return (
+    <div>
+      <p className="mb-3 text-sm text-slate-600">{t("publishNote")}</p>
+      <label className="mb-2 flex items-start gap-2 text-sm">
+        <input type="checkbox" className="mt-1" checked={updateExisting} disabled={phase === "publishing" || phase === "done"} onChange={(e) => setUpdateExisting(e.target.checked)} /> {t("updateExisting")}
+      </label>
+      {!ids && (
+        <label className="mb-3 flex items-start gap-2 text-sm">
+          <input type="checkbox" className="mt-1" checked={onlyChanged} disabled={phase === "publishing" || phase === "done"} onChange={(e) => setOnlyChanged(e.target.checked)} /> {t("onlyChanged")}
+        </label>
+      )}
+      {phase === "loading" && <p className="py-4 text-center text-slate-400">{t("loading")}</p>}
+      {c && phase !== "loading" && (
+        <>
+          <div className="mb-3 flex flex-wrap gap-2 text-xs">
+            {(["create", "update", "unchanged", "skipped", "failed"] as const).map((k) => (
+              <span key={k} className={`rounded px-2 py-1 ${badge[k]}`}>{label[k]}: {c[k]}</span>
+            ))}
+          </div>
+          {res?.truncated && <p className="mb-2 text-xs text-amber-700">{t("truncatedNote")}</p>}
+          <div className="mb-3 max-h-56 overflow-auto rounded-md border border-slate-200">
+            <table className="w-full text-xs">
+              <tbody className="divide-y divide-slate-100">
+                {res?.rows.map((r, i) => (
+                  <tr key={i}>
+                    <td className="px-2 py-1 font-mono">{r.partNumber}</td>
+                    <td className="px-2 py-1">{r.name}</td>
+                    <td className="px-2 py-1"><span className={`rounded px-1.5 py-0.5 ${badge[r.action]}`}>{label[r.action]}</span></td>
+                    <td className="px-2 py-1 text-slate-500">{r.reason ? t(`pub_${r.reason}` as Key) : ""}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+      {c && phase === "preview" && todo === 0 && <p className="mb-3 text-sm text-slate-500">{t("nothingToPublish")}</p>}
+      {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+      <div className="flex justify-end gap-2">
+        <button type="button" className="btn-secondary" onClick={phase === "done" ? onDone : onClose}>{phase === "done" ? t("publishDone") : t("cancel")}</button>
+        {phase !== "done" && <button className="btn-primary" disabled={phase !== "preview" || todo === 0} onClick={publish}>{phase === "publishing" ? t("loading") : `${t("publishNow")} (${todo})`}</button>}
+      </div>
+    </div>
+  );
+}
+
+export default function ItemsClient({ canPublish }: { canPublish: boolean }) {
   const { t, err, itemName } = useLang();
   const [q, setQ] = useState("");
   const [dq, setDq] = useState("");
@@ -137,6 +234,14 @@ export default function ItemsClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modal, setModal] = useState<ModalState>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const toggle = (id: string) => setSelected((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const pageIds = data?.items.map((i) => i.id) ?? [];
+  const allOnPage = pageIds.length > 0 && pageIds.every((id) => selected.has(id));
+  const togglePage = () => setSelected((p) => { const n = new Set(p); pageIds.forEach((id) => (allOnPage ? n.delete(id) : n.add(id))); return n; });
+  const storeStatus = (i: ItemVM) =>
+    !i.publishedAt ? "none" : new Date(i.updatedAt).getTime() > new Date(i.publishedAt).getTime() ? "changed" : "on";
 
   useEffect(() => {
     const id = setTimeout(() => { setDq(q); setPage(1); }, 300);
@@ -161,7 +266,7 @@ export default function ItemsClient() {
 
   useEffect(() => { load(); }, [load]);
 
-  const done = () => { setModal(null); load(); };
+  const done = () => { setModal(null); setSelected(new Set()); load(); };
   const pages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
 
   return (
@@ -178,20 +283,35 @@ export default function ItemsClient() {
         <button className="btn-primary ml-auto" onClick={() => setModal({ kind: "add" })}>{t("addItem")}</button>
       </div>
 
+      {canPublish && (
+        <div className="mb-3 flex flex-wrap items-center gap-3 rounded-md bg-slate-50 p-2 text-sm">
+          <button className="btn-secondary" disabled={selected.size === 0} onClick={() => setModal({ kind: "publish", ids: Array.from(selected) })}>
+            {t("publishSelected")} ({selected.size})
+          </button>
+          <button className="btn-secondary" onClick={() => setModal({ kind: "publish", filter: { q: dq || undefined, category: category || undefined, low: low || undefined } })}>
+            {t("publishAll")}
+          </button>
+          {selected.size > 0 && <button className="text-slate-500 hover:underline" onClick={() => setSelected(new Set())}>{t("clearSel")}</button>}
+        </div>
+      )}
+
       {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
 
       <div className="overflow-x-auto rounded-md border border-slate-200">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
             <tr>
+              {canPublish && <th className="w-8 px-3 py-2"><input type="checkbox" aria-label="select page" checked={allOnPage} onChange={togglePage} /></th>}
               <th className="px-3 py-2">{t("partNo")}</th><th className="px-3 py-2">{t("name")}</th>
               <th className="px-3 py-2">{t("category")}</th><th className="px-3 py-2 text-right">{t("qty")}</th>
-              <th className="px-3 py-2 text-right">{t("price")}</th><th className="px-3 py-2">{t("actions")}</th>
+              <th className="px-3 py-2 text-right">{t("price")}</th>
+              {canPublish && <th className="px-3 py-2">{t("storeCol")}</th>}<th className="px-3 py-2">{t("actions")}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {data?.items.map((i) => (
               <tr key={i.id}>
+                {canPublish && <td className="px-3 py-2"><input type="checkbox" aria-label={i.partNumber} checked={selected.has(i.id)} onChange={() => toggle(i.id)} /></td>}
                 <td className="px-3 py-2 font-mono text-xs">{i.partNumber}</td>
                 <td className="px-3 py-2">{itemName(i)}</td>
                 <td className="px-3 py-2 text-slate-500">{i.category}</td>
@@ -200,6 +320,11 @@ export default function ItemsClient() {
                   {i.quantity <= i.lowStockAt && <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700">{t("lowBadge")}</span>}
                 </td>
                 <td className="px-3 py-2 text-right">{formatNaira(i.priceNgn)}</td>
+                {canPublish && (() => {
+                  const st = storeStatus(i);
+                  const cls = st === "on" ? "bg-green-100 text-green-700" : st === "changed" ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500";
+                  return <td className="whitespace-nowrap px-3 py-2"><span className={`rounded px-1.5 py-0.5 text-xs ${cls}`}>{t(st === "on" ? "stOn" : st === "changed" ? "stChanged" : "stNone")}</span></td>;
+                })()}
                 <td className="whitespace-nowrap px-3 py-2">
                   <button className="mr-3 text-green-700 hover:underline" onClick={() => setModal({ kind: "stock", item: i, type: "ADDED" })}>{t("stockIn")}</button>
                   <button className="mr-3 text-amber-700 hover:underline" onClick={() => setModal({ kind: "stock", item: i, type: "REMOVED" })}>{t("stockOut")}</button>
@@ -209,9 +334,9 @@ export default function ItemsClient() {
               </tr>
             ))}
             {!loading && data?.items.length === 0 && (
-              <tr><td colSpan={6} className="px-3 py-6 text-center text-slate-500">{t("noItems")}</td></tr>
+              <tr><td colSpan={canPublish ? 8 : 6} className="px-3 py-6 text-center text-slate-500">{t("noItems")}</td></tr>
             )}
-            {loading && <tr><td colSpan={6} className="px-3 py-6 text-center text-slate-400">{t("loading")}</td></tr>}
+            {loading && <tr><td colSpan={canPublish ? 8 : 6} className="px-3 py-6 text-center text-slate-400">{t("loading")}</td></tr>}
           </tbody>
         </table>
       </div>
@@ -228,6 +353,7 @@ export default function ItemsClient() {
       {modal?.kind === "add" && <Modal title={t("addTitle")} onClose={() => setModal(null)}><ItemForm categories={data?.categories ?? []} onDone={done} onClose={() => setModal(null)} /></Modal>}
       {modal?.kind === "edit" && <Modal title={t("editTitle")} onClose={() => setModal(null)}><ItemForm item={modal.item} categories={data?.categories ?? []} onDone={done} onClose={() => setModal(null)} /></Modal>}
       {modal?.kind === "stock" && <Modal title={modal.type === "ADDED" ? t("stockInTitle") : t("stockOutTitle")} onClose={() => setModal(null)}><ReasonForm item={modal.item} type={modal.type} onDone={done} onClose={() => setModal(null)} /></Modal>}
+      {modal?.kind === "publish" && <Modal title={t("publishTitle")} onClose={() => setModal(null)}><PublishModal ids={modal.ids} filter={modal.filter} onDone={done} onClose={() => setModal(null)} /></Modal>}
       {modal?.kind === "delete" && <Modal title={t("deleteTitle")} onClose={() => setModal(null)}><ReasonForm item={modal.item} remove onDone={done} onClose={() => setModal(null)} /></Modal>}
     </div>
   );

@@ -40,21 +40,44 @@ export const stockSchema = z.object({
 export const deleteSchema = z.object({ reason: reasonSchema });
 
 export const invoiceSchema = z.object({
+  variant: z.enum(["ATOZEE", "ATOZEE_YUCHAI"]),
   customerName: req(120),
-  customerContact: text(120).nullable().optional(),
-  notes: text(1000).nullable().optional(),
+  customerAddress: text(200).nullable().optional(),
+  jobDescription: text(300).nullable().optional(),
+  tinNumber: text(40).nullable().optional(),
+  refNo: text(60).nullable().optional(),
+  applyVat: z.boolean(),
   deductStock: z.boolean(),
   lines: z
     .array(
       z.object({
-        itemId: req(64),
+        itemId: z.string().trim().max(64).nullable().optional(), // null/absent = custom line
+        description: req(300),
         quantity: z.number().int().min(1).max(100_000),
+        unit: text(20).optional(),
         unitPrice: z.number().min(0).max(1_000_000_000),
+        lumpSum: z.boolean().optional(),
       })
     )
     .min(1, "Add at least one line")
-    .max(50),
+    .max(40),
 });
+
+export const publishSchema = z
+  .object({
+    itemIds: z.array(z.string().trim().max(64)).max(500).optional(),
+    filter: z
+      .object({
+        q: text(100).optional(),
+        category: text(80).optional(),
+        low: z.boolean().optional(),
+        unpublishedOnly: z.boolean().optional(),
+      })
+      .optional(),
+    updateExisting: z.boolean(),
+    dryRun: z.boolean(),
+  })
+  .refine((v) => (v.itemIds && v.itemIds.length > 0) || v.filter, "Choose items or a filter");
 
 const roleEnum = z.enum(["GLOBAL_ADMIN", "YUCHAI_STAFF", "ATOZEE_STAFF"]);
 const passwordSchema = z.string().min(10, "Password must be at least 10 characters").max(128);

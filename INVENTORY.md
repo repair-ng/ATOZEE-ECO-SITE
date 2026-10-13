@@ -18,8 +18,30 @@ this Next.js app and uses the same Postgres database as the store.
 |---|:-:|:-:|:-:|
 | View / add / edit inventory, stock in & out, delete | ✔ | ✔ | ✔ |
 | View stock log (filter by type, user, date, text) | ✔ | ✔ | ✔ |
-| Create / view invoices | ✔ | ✔ | ✘ |
+| Create invoices | ✘ | ✔ | ✘ |
+| View invoices | ✔ | ✔ | ✘ |
+| Publish items to the store | ✔ | ✔ | ✘ |
 | Manage all accounts (roles, passwords, disable) | ✔ | ✘ | ✘ |
+
+## Invoices
+Two styles, chosen per invoice: **ATOZEE logo only** (letterhead with address on the right) and
+**ATOZEE + YUCHAI logos** (YC Diesel logo, address underneath, "RECEIVED" box). Both follow the
+existing paper format: customer, address, job description, TIN, ref no., items, subtotal, VAT 7.5%,
+grand total, amount in words, bank details, signatory. Numbers are `yyyymmdd-NNN` in Lagos time
+(`20260929-001`, `-002`, ...), allocated atomically so they never collide or skip. Lines can come
+from inventory (optionally deducting stock, logged as "Invoice <no>") or be custom lines such as
+delivery / lump sums. Print with the **Print** button (Save as PDF in the print dialog).
+Letterhead, bank and signatory text live in `lib/inv-company.ts`; logos in `public/invoice/`.
+The signature itself is left blank above the printed name, to be signed by hand.
+
+## Publishing to the store
+On the inventory table, tick items and press **Publish selected**, or **Publish all matching**
+(respects the current search/category/low-stock filter; optionally only items never published or
+changed since). A preview shows what will be created / updated / skipped before anything is written.
+Items are matched to store products by **part number**. New ones are created (active, no images);
+existing ones get name, category, description, price and in-stock overwritten — **images, URL slug,
+engine numbers and the hidden/active switch are never touched**. Items with no price are skipped.
+The *Store* column shows Not on store / On store / Changed (edited since last publish). Max 500 per run.
 
 ## Rules built in
 - Quantity only changes via **Stock in / Stock out**, each with a required reason; every

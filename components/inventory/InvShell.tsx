@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { api } from "@/lib/inv-client";
 import { LangProvider, LanguageToggle, useLang, type Key } from "@/lib/inv-i18n";
-import { canInvoice, isAdmin, type SessionUserVM } from "@/lib/inv-types";
+import { canViewInvoices, isAdmin, type SessionUserVM } from "@/lib/inv-types";
 
 function Inner({ user, children }: { user: SessionUserVM; children: React.ReactNode }) {
   const { t } = useLang();
@@ -14,7 +14,7 @@ function Inner({ user, children }: { user: SessionUserVM; children: React.ReactN
   const links: { href: string; label: Key; show: boolean }[] = [
     { href: "/inventory", label: "navItems", show: true },
     { href: "/inventory/movements", label: "navLog", show: true },
-    { href: "/inventory/invoices", label: "navInvoices", show: canInvoice(user.role) },
+    { href: "/inventory/invoices", label: "navInvoices", show: canViewInvoices(user.role) },
     { href: "/inventory/users", label: "navUsers", show: isAdmin(user.role) },
   ];
 
