@@ -9,6 +9,8 @@ export const canCreateInvoices = (r: Role) => r === "ATOZEE_STAFF";
 export const canViewInvoices = (r: Role) => r === "ATOZEE_STAFF" || r === "GLOBAL_ADMIN";
 // Publishing pushes data into the Atozee store, so it's an Atozee-side action.
 export const canPublish = (r: Role) => r === "ATOZEE_STAFF" || r === "GLOBAL_ADMIN";
+// Margins / selling prices are Atozee's business — Yuchai staff see costs and stock only.
+export const canSeePricing = canPublish;
 export const isAdmin = (r: Role) => r === "GLOBAL_ADMIN";
 
 export interface SessionUserVM {
@@ -17,6 +19,14 @@ export interface SessionUserVM {
   displayName: string;
   role: Role;
   language: Lang;
+}
+export type PriceSource = "computed" | "manual" | "none";
+export interface ItemLinkVM {
+  itemId: string;
+  partNumber: string;
+  name: string;
+  required: number; // units of the linked item needed per unit of this item
+  linkedQty: number; // units of the linked item currently on hand
 }
 export interface ItemVM {
   id: string;
@@ -28,10 +38,34 @@ export interface ItemVM {
   unit: string;
   quantity: number;
   lowStockAt: number;
-  priceNgn: number;
   invoiceable: boolean;
+  engineNumbers: string[];
+  costCny: number | null;
+  // Pricing fields are hidden (null / 0) from roles that can't see Atozee's margin.
+  priceNgn: number; // manual NGN price (used only when there is no cost)
+  marginPct: number | null; // per-item margin override
+  sellPriceNgn: number | null; // what the store/invoices use: computed or manual
+  priceSource: PriceSource;
+  link: ItemLinkVM | null;
+  sellable: number; // min(own stock, how many units the linked item can support)
   updatedAt: string;
   publishedAt: string | null;
+}
+export interface SettingsVM {
+  cnyToNgn: number;
+  defaultMarginPct: number;
+}
+export type PaymentStatus = "PENDING" | "PAID";
+export interface InvoiceRowVM {
+  id: string;
+  number: string;
+  variant: InvoiceVariant;
+  customerName: string;
+  total: number;
+  paymentStatus: PaymentStatus;
+  isError: boolean;
+  createdByName: string;
+  createdAt: string;
 }
 export interface MovementVM {
   id: string;
@@ -69,6 +103,14 @@ export interface InvoiceVM {
   vatRate: number;
   vatAmount: number;
   total: number;
+  paymentStatus: PaymentStatus;
+  paidAt: string | null;
+  paidByName: string | null;
+  isError: boolean;
+  errorReason: string | null;
+  errorFlaggedBy: string | null;
+  errorFlaggedAt: string | null;
+  stockDeducted: boolean;
   createdByName: string;
   createdAt: string;
 }

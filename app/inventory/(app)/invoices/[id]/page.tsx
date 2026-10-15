@@ -6,5 +6,5 @@ import { canViewInvoices } from "@/lib/inv-types";
 export default async function InvoicePage({ params }: { params: { id: string } }) {
   const user = await getSessionUser();
   if (!user || !canViewInvoices(user.role)) redirect("/inventory");
-  return <InvoiceView id={params.id} />;
+  return <InvoiceView id={params.id} role={user.role} />;
 }

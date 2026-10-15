@@ -2,15 +2,15 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/inv-client";
 import { useLang } from "@/lib/inv-i18n";
-import type { InvoiceVariant, ItemVM } from "@/lib/inv-types";
+import type { InvoiceRowVM, InvoiceVariant, ItemVM } from "@/lib/inv-types";
 import { COMPANY } from "@/lib/inv-company";
 import { formatNaira } from "@/lib/site-config";
 import Modal, { Field } from "./Modal";
 
-interface Row { id: string; number: string; variant: InvoiceVariant; customerName: string; total: number; createdByName: string; createdAt: string }
+interface ListResp { invoices: InvoiceRowVM[]; total: number; page: number; pageSize: number; sumTotal: number }
 interface Line { key: number; itemId: string | null; description: string; quantity: string; unit: string; unitPrice: string; lumpSum: boolean }
 
 function NewInvoice({ onClose }: { onClose: () => void }) {
@@ -44,7 +44,7 @@ function NewInvoice({ onClose }: { onClose: () => void }) {
 
   const addItem = (i: ItemVM) => {
     // Invoices are English documents, so the description always uses the English name + part number.
-    setLines((p) => [...p, { key: nextKey.current++, itemId: i.id, description: `${i.nameEn} (${i.partNumber})`, quantity: "1", unit: i.unit, unitPrice: String(i.priceNgn), lumpSum: false }]);
+    setLines((p) => [...p, { key: nextKey.current++, itemId: i.id, description: `${i.nameEn} (${i.partNumber})`, quantity: "1", unit: i.unit, unitPrice: String(i.sellPriceNgn ?? i.priceNgn), lumpSum: false }]);
     setQ(""); setResults([]);
   };
   const addCustom = () => setLines((p) => [...p, { key: nextKey.current++, itemId: null, description: "", quantity: "1", unit: "", unitPrice: "0", lumpSum: false }]);
@@ -152,13 +152,48 @@ function NewInvoice({ onClose }: { onClose: () => void }) {
 
 export default function InvoicesClient({ canCreate }: { canCreate: boolean }) {
   const { t, err, fmtDate } = useLang();
-  const [rows, setRows] = useState<Row[] | null>(null);
+  const [status, setStatus] = useState("");
+  const [variant, setVariant] = useState("");
+  const [q, setQ] = useState("");
+  const [dq, setDq] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [page, setPage] = useState(1);
+  const [data, setData] = useState<ListResp | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
-    api<{ invoices: Row[] }>("/api/inventory/invoices").then((r) => setRows(r.invoices)).catch((e) => setError(err(e)));
-  }, [err]);
+    const id = setTimeout(() => { setDq(q); setPage(1); }, 300);
+    return () => clearTimeout(id);
+  }, [q]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const sp = new URLSearchParams({ page: String(page) });
+      if (status) sp.set("status", status);
+      if (variant) sp.set("variant", variant);
+      if (dq) sp.set("q", dq);
+      if (from) sp.set("from", from);
+      if (to) sp.set("to", to);
+      setData(await api<ListResp>(`/api/inventory/invoices?${sp}`));
+    } catch (e) { setError(err(e)); }
+    setLoading(false);
+  }, [page, status, variant, dq, from, to, err]);
+  useEffect(() => { load(); }, [load]);
+
+  async function setPaid(r: InvoiceRowVM) {
+    try {
+      await api(`/api/inventory/invoices/${r.id}`, { method: "PATCH", body: { action: r.paymentStatus === "PAID" ? "markPending" : "markPaid" } });
+      load();
+    } catch (e) { setError(err(e)); }
+  }
+
+  const pages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
+  const clear = () => { setStatus(""); setVariant(""); setQ(""); setFrom(""); setTo(""); setPage(1); };
 
   return (
     <div>
@@ -167,27 +202,60 @@ export default function InvoicesClient({ canCreate }: { canCreate: boolean }) {
         {canCreate && <button className="btn-primary" onClick={() => setCreating(true)}>{t("newInvoice")}</button>}
       </div>
       {!canCreate && <p className="mb-3 text-sm text-slate-500">{t("viewOnlyNote")}</p>}
+
+      <div className="mb-4 flex flex-wrap items-end gap-3">
+        <select className="input-field w-auto" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
+          <option value="">{t("statusAll")}</option>
+          <option value="PENDING">{t("stPending")}</option>
+          <option value="PAID">{t("stPaid")}</option>
+          <option value="ERROR">{t("stError")}</option>
+        </select>
+        <select className="input-field w-auto" value={variant} onChange={(e) => { setVariant(e.target.value); setPage(1); }}>
+          <option value="">{t("allStyles")}</option>
+          <option value="ATOZEE">ATOZEE</option>
+          <option value="ATOZEE_YUCHAI">ATOZEE + YUCHAI</option>
+        </select>
+        <input className="input-field max-w-[16rem]" placeholder={t("searchInv")} maxLength={100} value={q} onChange={(e) => setQ(e.target.value)} />
+        <label className="text-xs text-slate-500">{t("from")}<input type="date" className="input-field" value={from} onChange={(e) => { setFrom(e.target.value); setPage(1); }} /></label>
+        <label className="text-xs text-slate-500">{t("to")}<input type="date" className="input-field" value={to} onChange={(e) => { setTo(e.target.value); setPage(1); }} /></label>
+        <button className="btn-secondary" onClick={clear}>{t("clearFilters")}</button>
+      </div>
+
       {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
       <div className="overflow-x-auto rounded-md border border-slate-200">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
-            <tr><th className="px-3 py-2">{t("invNumber")}</th><th className="px-3 py-2">{t("customer")}</th><th className="px-3 py-2">{t("invStyle")}</th><th className="px-3 py-2">{t("date")}</th><th className="px-3 py-2">{t("issuedBy")}</th><th className="px-3 py-2 text-right">{t("total")}</th></tr>
+            <tr><th className="px-3 py-2">{t("invNumber")}</th><th className="px-3 py-2">{t("customer")}</th><th className="px-3 py-2">{t("invStyle")}</th><th className="px-3 py-2">{t("date")}</th><th className="px-3 py-2">{t("paymentCol")}</th><th className="px-3 py-2 text-right">{t("total")}</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {rows?.map((r) => (
-              <tr key={r.id}>
+            {data?.invoices.map((r) => (
+              <tr key={r.id} className={r.isError ? "bg-red-50" : ""}>
                 <td className="px-3 py-2"><Link className="font-mono text-xs text-brand-blue hover:underline" href={`/inventory/invoices/${r.id}`}>{r.number}</Link></td>
                 <td className="px-3 py-2">{r.customerName}</td>
                 <td className="px-3 py-2 text-slate-500">{r.variant === "ATOZEE_YUCHAI" ? "ATOZEE + YUCHAI" : "ATOZEE"}</td>
                 <td className="px-3 py-2 text-slate-500">{fmtDate(r.createdAt)}</td>
-                <td className="px-3 py-2 text-slate-500">{r.createdByName}</td>
+                <td className="whitespace-nowrap px-3 py-2">
+                  <button onClick={() => setPaid(r)} title={r.paymentStatus === "PAID" ? t("markPending") : t("markPaid")}
+                    className={`rounded px-2 py-0.5 text-xs ${r.paymentStatus === "PAID" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-800"}`}>
+                    {r.paymentStatus === "PAID" ? `✓ ${t("stPaid")}` : t("stPending")}
+                  </button>
+                  {r.isError && <span className="ml-2 rounded bg-red-100 px-2 py-0.5 text-xs text-red-700">{t("stError")}</span>}
+                </td>
                 <td className="px-3 py-2 text-right">{formatNaira(r.total)}</td>
               </tr>
             ))}
-            {rows && rows.length === 0 && <tr><td colSpan={6} className="px-3 py-6 text-center text-slate-500">{t("noInvoices")}</td></tr>}
-            {!rows && !error && <tr><td colSpan={6} className="px-3 py-6 text-center text-slate-400">{t("loading")}</td></tr>}
+            {!loading && data?.invoices.length === 0 && <tr><td colSpan={6} className="px-3 py-6 text-center text-slate-500">{t("noInvoices")}</td></tr>}
+            {loading && <tr><td colSpan={6} className="px-3 py-6 text-center text-slate-400">{t("loading")}</td></tr>}
           </tbody>
         </table>
+      </div>
+      <div className="mt-3 flex items-center justify-between text-sm text-slate-600">
+        <span>{data?.total ?? 0} · {t("shownTotal")}: {formatNaira(data?.sumTotal ?? 0)}</span>
+        <div className="flex items-center gap-3">
+          <button className="btn-secondary" disabled={page <= 1} onClick={() => setPage(page - 1)}>{t("prev")}</button>
+          <span>{page} / {pages}</span>
+          <button className="btn-secondary" disabled={page >= pages} onClick={() => setPage(page + 1)}>{t("next")}</button>
+        </div>
       </div>
       {creating && <NewInvoice onClose={() => setCreating(false)} />}
     </div>

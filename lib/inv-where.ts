@@ -23,6 +23,7 @@ export function itemWhere(f: ItemFilter): Prisma.InvItemWhereInput {
         { nameEn: { contains: q, mode: "insensitive" } },
         { nameZh: { contains: q } },
         { description: { contains: q, mode: "insensitive" } },
+        { engineNumbers: { has: q } }, // exact engine number
       ],
     });
   }

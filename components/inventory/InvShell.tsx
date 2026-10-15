@@ -16,6 +16,7 @@ function Inner({ user, children }: { user: SessionUserVM; children: React.ReactN
     { href: "/inventory/movements", label: "navLog", show: true },
     { href: "/inventory/invoices", label: "navInvoices", show: canViewInvoices(user.role) },
     { href: "/inventory/users", label: "navUsers", show: isAdmin(user.role) },
+    { href: "/inventory/settings", label: "navSettings", show: isAdmin(user.role) },
   ];
 
   async function logout() {

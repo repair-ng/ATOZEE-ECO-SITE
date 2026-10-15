@@ -5,21 +5,55 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { COMPANY } from "@/lib/inv-company";
 import { lagosDayCompact } from "@/lib/inv-format";
-import { HttpError, inv, readJson } from "@/lib/inv-guard";
+import { HttpError, inv, pageParams, readJson } from "@/lib/inv-guard";
 import { invoiceSchema } from "@/lib/inv-schemas";
 import { blankToNull, round2 } from "@/lib/inv-serialize";
 import { applyStock } from "@/lib/inv-stock";
-import type { InvoiceLine } from "@/lib/inv-types";
+import type { InvoiceLine, InvoiceRowVM } from "@/lib/inv-types";
 
 // Atozee staff create invoices. The global admin can look at them; Yuchai staff can't see them at all.
-export const GET = inv({ roles: ["ATOZEE_STAFF", "GLOBAL_ADMIN"] }, async () => {
-  const rows = await prisma.invInvoice.findMany({ orderBy: { createdAt: "desc" }, take: 200 });
-  return NextResponse.json({
-    invoices: rows.map((r) => ({
-      id: r.id, number: r.number, variant: r.variant, customerName: r.customerName,
-      total: Number(r.total), createdByName: r.createdByName, createdAt: r.createdAt.toISOString(),
-    })),
-  });
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+// Filters: status (PENDING | PAID | ERROR), free text (number / customer / job), style, date range.
+export const GET = inv({ roles: ["ATOZEE_STAFF", "GLOBAL_ADMIN"] }, async ({ req }) => {
+  const sp = req.nextUrl.searchParams;
+  const status = sp.get("status") ?? "";
+  const variant = sp.get("variant") ?? "";
+  const q = (sp.get("q") ?? "").trim().slice(0, 100);
+  const from = sp.get("from") ?? "";
+  const to = sp.get("to") ?? "";
+  const { page, pageSize, skip } = pageParams(sp);
+
+  const createdAt: Prisma.DateTimeFilter = {};
+  if (DATE.test(from)) createdAt.gte = new Date(`${from}T00:00:00.000Z`);
+  if (DATE.test(to)) createdAt.lt = new Date(new Date(`${to}T00:00:00.000Z`).getTime() + 86_400_000);
+
+  const where: Prisma.InvInvoiceWhereInput = {
+    ...(status === "PENDING" || status === "PAID" ? { paymentStatus: status } : {}),
+    ...(status === "ERROR" ? { isError: true } : {}),
+    ...(variant === "ATOZEE" || variant === "ATOZEE_YUCHAI" ? { variant } : {}),
+    ...(Object.keys(createdAt).length ? { createdAt } : {}),
+    ...(q
+      ? {
+          OR: [
+            { number: { contains: q } },
+            { customerName: { contains: q, mode: "insensitive" } },
+            { jobDescription: { contains: q, mode: "insensitive" } },
+          ],
+        }
+      : {}),
+  };
+
+  const [rows, total, sum] = await Promise.all([
+    prisma.invInvoice.findMany({ where, orderBy: { createdAt: "desc" }, skip, take: pageSize }),
+    prisma.invInvoice.count({ where }),
+    prisma.invInvoice.aggregate({ where, _sum: { total: true } }),
+  ]);
+  const invoices: InvoiceRowVM[] = rows.map((r) => ({
+    id: r.id, number: r.number, variant: r.variant, customerName: r.customerName, total: Number(r.total),
+    paymentStatus: r.paymentStatus, isError: r.isError, createdByName: r.createdByName, createdAt: r.createdAt.toISOString(),
+  }));
+  return NextResponse.json({ invoices, total, page, pageSize, sumTotal: Number(sum._sum.total ?? 0) });
 });
 
 export const POST = inv({ roles: ["ATOZEE_STAFF"] }, async ({ req, user }) => {
@@ -77,6 +111,8 @@ export const POST = inv({ roles: ["ATOZEE_STAFF"] }, async ({ req, user }) => {
         refNo: blankToNull(b.refNo) ?? null,
         lines: lines as unknown as Prisma.InputJsonValue,
         subtotal, vatRate, vatAmount, total,
+        // Remember whether stock was taken, so deleting the invoice can offer to put it back.
+        stockDeducted: b.deductStock && lines.some((l) => !!l.itemId),
         createdById: user.id, createdByName: user.displayName,
       },
     });

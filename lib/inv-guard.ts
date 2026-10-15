@@ -72,12 +72,12 @@ interface Ctx {
 }
 
 /** Wraps a route handler with auth, role check, CSRF/size guards and uniform error output. */
-export function inv(opts: { roles?: InvRole[] }, fn: (ctx: Ctx) => Promise<Response>) {
+export function inv(opts: { roles?: InvRole[]; maxBytes?: number }, fn: (ctx: Ctx) => Promise<Response>) {
   return async (req: NextRequest, routeCtx: { params: Record<string, string> }) => {
     try {
       if (req.method !== "GET" && req.method !== "HEAD") {
         assertSameOrigin(req);
-        assertSize(req);
+        assertSize(req, opts.maxBytes);
       }
       const user = await getSessionUser();
       if (!user) throw new HttpError(401, "Not signed in", "UNAUTHORIZED");

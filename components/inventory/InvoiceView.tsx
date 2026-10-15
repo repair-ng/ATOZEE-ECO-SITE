@@ -1,18 +1,27 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/inv-client";
 import { COMPANY } from "@/lib/inv-company";
 import { amountInWords, formatInvoiceDate, money } from "@/lib/inv-format";
 import { useLang } from "@/lib/inv-i18n";
-import type { InvoiceVM } from "@/lib/inv-types";
+import { isAdmin, type InvoiceVM, type Role } from "@/lib/inv-types";
+import Modal, { Field } from "./Modal";
 
 const MIN_ROWS = 10; // blank rows pad the table so it looks like the paper form
 
 // The invoice itself is an English business document, whatever language the UI is in.
-export default function InvoiceView({ id }: { id: string }) {
-  const { t, err } = useLang();
+export default function InvoiceView({ id, role }: { id: string; role: Role }) {
+  const { t, err, fmtDate } = useLang();
+  const router = useRouter();
+  const [flagging, setFlagging] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [reason, setReason] = useState("");
+  const [returnStock, setReturnStock] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [inv, setInv] = useState<InvoiceVM | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -23,6 +32,22 @@ export default function InvoiceView({ id }: { id: string }) {
 
   if (error) return <p className="text-sm text-red-600">{error}</p>;
   if (!inv) return <p className="text-slate-400">{t("loading")}</p>;
+
+  async function act(action: "markPaid" | "markPending" | "flagError" | "clearError", why?: string) {
+    setBusy(true); setActionError(null);
+    try {
+      const r = await api<{ invoice: InvoiceVM }>(`/api/inventory/invoices/${encodeURIComponent(id)}`, { method: "PATCH", body: { action, reason: why } });
+      setInv(r.invoice); setFlagging(false); setReason("");
+    } catch (e) { setActionError(err(e)); }
+    setBusy(false);
+  }
+  async function remove() {
+    setBusy(true); setActionError(null);
+    try {
+      await api(`/api/inventory/invoices/${encodeURIComponent(id)}`, { method: "DELETE", body: { returnStock: returnStock && inv!.stockDeducted } });
+      router.push("/inventory/invoices");
+    } catch (e) { setActionError(err(e)); setBusy(false); }
+  }
 
   const yc = inv.variant === "ATOZEE_YUCHAI";
   const rows = Array.from({ length: Math.max(MIN_ROWS, inv.lines.length) }, (_, i) => inv.lines[i] ?? null);
@@ -54,6 +79,52 @@ export default function InvoiceView({ id }: { id: string }) {
         <Link href="/inventory/invoices" className="text-sm text-brand-blue hover:underline">← {t("back")}</Link>
         <button className="btn-primary" onClick={() => window.print()}>{t("print")}</button>
       </div>
+
+      <div className="mb-4 space-y-2 text-sm print:hidden">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`rounded px-2 py-1 text-xs font-medium ${inv.paymentStatus === "PAID" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-800"}`}>
+            {inv.paymentStatus === "PAID" ? t("stPaid") : t("stPending")}
+          </span>
+          {inv.paymentStatus === "PAID" && inv.paidAt && <span className="text-xs text-slate-500">{t("paidOn")}: {fmtDate(inv.paidAt)} · {inv.paidByName}</span>}
+          <button className="btn-secondary" disabled={busy} onClick={() => act(inv.paymentStatus === "PAID" ? "markPending" : "markPaid")}>
+            {inv.paymentStatus === "PAID" ? t("markPending") : t("markPaid")}
+          </button>
+          {inv.isError
+            ? <button className="btn-secondary" disabled={busy} onClick={() => act("clearError")}>{t("clearError")}</button>
+            : <button className="btn-secondary" disabled={busy} onClick={() => setFlagging(true)}>{t("flagError")}</button>}
+          {isAdmin(role) && <button className="btn-primary !bg-red-600" disabled={busy} onClick={() => setDeleting(true)}>{t("deleteInvoice")}</button>}
+        </div>
+        {inv.isError && (
+          <p className="rounded bg-red-50 p-2 text-red-700">
+            <b>{t("stError")}:</b> {inv.errorReason} <span className="text-xs text-red-500">— {t("flaggedBy")} {inv.errorFlaggedBy}{inv.errorFlaggedAt ? `, ${fmtDate(inv.errorFlaggedAt)}` : ""}</span>
+          </p>
+        )}
+        {actionError && <p className="text-red-600">{actionError}</p>}
+      </div>
+
+      {flagging && (
+        <Modal title={t("flagError")} onClose={() => setFlagging(false)}>
+          <form onSubmit={(e) => { e.preventDefault(); act("flagError", reason); }}>
+            <Field label={t("errorReasonLbl")}><textarea className="input-field" rows={3} required minLength={3} maxLength={300} value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
+            <div className="flex justify-end gap-2">
+              <button type="button" className="btn-secondary" onClick={() => setFlagging(false)}>{t("cancel")}</button>
+              <button className="btn-primary" disabled={busy}>{t("confirm")}</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+      {deleting && (
+        <Modal title={t("deleteInvoice")} onClose={() => setDeleting(false)}>
+          <p className="mb-3 text-sm text-red-700">{t("confirmDeleteInv")}</p>
+          {inv.stockDeducted && (
+            <label className="mb-3 flex items-center gap-2 text-sm"><input type="checkbox" checked={returnStock} onChange={(e) => setReturnStock(e.target.checked)} /> {t("returnStock")}</label>
+          )}
+          <div className="flex justify-end gap-2">
+            <button type="button" className="btn-secondary" onClick={() => setDeleting(false)}>{t("cancel")}</button>
+            <button className="btn-primary !bg-red-600" disabled={busy} onClick={remove}>{t("deleteInvoice")}</button>
+          </div>
+        </Modal>
+      )}
 
       <div id="invoice-doc" className={`border ${L} bg-white text-[12px] leading-snug text-black`}>
         {/* Letterhead — differs between the two styles */}

@@ -209,6 +209,18 @@ model InvItem {
   isDeleted   Boolean  @default(false) @map("is_deleted")
   // Last time this item was published to the store's products table.
   publishedAt DateTime? @map("published_at")
+  // Engines this part fits (copied onto the store product when published).
+  engineNumbers String[] @default([]) @map("engine_numbers")
+  // Cost in Chinese yuan. When set, the store price is calculated:
+  // cost x exchange rate x (1 + margin%). marginPct overrides the default margin.
+  costCny   Decimal? @map("cost_cny") @db.Decimal(12, 2)
+  marginPct Decimal? @map("margin_pct") @db.Decimal(6, 2)
+  // Linked item: this item can only be sold/published as in-stock while the
+  // linked item has at least `linkQty` units on hand per unit of this item.
+  linkedItemId String?   @map("linked_item_id")
+  linkedItem   InvItem?  @relation("ItemLink", fields: [linkedItemId], references: [id], onDelete: SetNull)
+  linkedBy     InvItem[] @relation("ItemLink")
+  linkQty      Int?      @map("link_qty")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
@@ -216,6 +228,8 @@ model InvItem {
 
   @@index([category])
   @@index([isDeleted])
+  @@index([engineNumbers])
+  @@index([linkedItemId])
   @@map("inv_items")
 }
 
@@ -239,6 +253,11 @@ model InvMovement {
   @@index([type])
   @@index([itemId])
   @@map("inv_movements")
+}
+
+enum InvPaymentStatus {
+  PENDING
+  PAID
 }
 
 enum InvInvoiceVariant {
@@ -265,9 +284,18 @@ model InvInvoice {
   createdById     String?           @map("created_by_id")
   createdBy       InvUser?          @relation(fields: [createdById], references: [id], onDelete: SetNull)
   createdByName   String            @map("created_by_name")
+  paymentStatus   InvPaymentStatus  @default(PENDING) @map("payment_status")
+  paidAt          DateTime?         @map("paid_at")
+  paidByName      String?           @map("paid_by_name")
+  isError         Boolean           @default(false) @map("is_error")
+  errorReason     String?           @map("error_reason")
+  errorFlaggedBy  String?           @map("error_flagged_by")
+  errorFlaggedAt  DateTime?         @map("error_flagged_at")
+  stockDeducted   Boolean           @default(false) @map("stock_deducted")
   createdAt       DateTime          @default(now()) @map("created_at")
 
   @@index([createdAt])
+  @@index([paymentStatus])
   @@map("inv_invoices")
 }
 
@@ -278,4 +306,15 @@ model InvInvoiceCounter {
   last Int
 
   @@map("inv_invoice_counters")
+}
+
+// Single-row table (id = "singleton"): exchange rate + default profit margin.
+model InvSettings {
+  id               String   @id
+  cnyToNgn         Decimal  @default(0) @map("cny_to_ngn") @db.Decimal(14, 4)
+  defaultMarginPct Decimal  @default(0) @map("default_margin_pct") @db.Decimal(6, 2)
+  updatedByName    String?  @map("updated_by_name")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@map("inv_settings")
 }

@@ -17,6 +17,11 @@ const itemFields = {
   lowStockAt: z.number().int().min(0).max(1_000_000),
   priceNgn: z.number().min(0).max(1_000_000_000),
   invoiceable: z.boolean(),
+  engineNumbers: z.array(z.string().trim().min(1).max(40)).max(50),
+  costCny: z.number().min(0).max(1_000_000_000).nullable(),
+  marginPct: z.number().min(0).max(1000).nullable(),
+  linkedItemId: z.string().trim().max(64).nullable(),
+  linkQty: z.number().int().min(1).max(100_000).nullable(),
 };
 
 export const createItemSchema = z.object({
@@ -25,6 +30,11 @@ export const createItemSchema = z.object({
   lowStockAt: itemFields.lowStockAt.optional(),
   priceNgn: itemFields.priceNgn.optional(),
   invoiceable: itemFields.invoiceable.optional(),
+  engineNumbers: itemFields.engineNumbers.optional(),
+  costCny: itemFields.costCny.optional(),
+  marginPct: itemFields.marginPct.optional(),
+  linkedItemId: itemFields.linkedItemId.optional(),
+  linkQty: itemFields.linkQty.optional(),
   quantity: z.number().int().min(0).max(1_000_000),
   reason: reasonSchema,
 });
@@ -104,3 +114,15 @@ export const loginSchema = z.object({
 });
 
 export const languageSchema = z.object({ language: z.enum(["en", "zh"]) });
+
+export const settingsSchema = z.object({
+  cnyToNgn: z.number().min(0).max(1_000_000),
+  defaultMarginPct: z.number().min(0).max(1000),
+});
+
+export const invoiceActionSchema = z.object({
+  action: z.enum(["markPaid", "markPending", "flagError", "clearError"]),
+  reason: reasonSchema.optional(),
+});
+
+export const invoiceDeleteSchema = z.object({ returnStock: z.boolean() });

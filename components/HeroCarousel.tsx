@@ -16,7 +16,7 @@ interface Slide {
 
 const SLIDES: Slide[] = [
   {
-    heading: "Genuine engine parts, matched to your engine number",
+    heading: "Genuine Yuchai engine parts, matched to your engine number",
     subtext: "Not just a general model family — the exact part for your exact engine.",
     ctaLabel: "Browse the catalog",
     ctaHref: "/catalog",
